@@ -1,0 +1,391 @@
+---
+title: "STAT542 HW1"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(message = FALSE)
+options(width = 1000)
+```
+
+## Name: Chun Yin Ricky Chue (chue2@illinois.edu)
+
+\section{Question 1.}
+From the sample R markdown file (line 22 - 30) to generate $\bold{X}$ and $\bold{Y}$.
+```{r}
+  library(MASS)
+  set.seed(1)
+  P = 4
+  N = 200
+  rho = 0.5
+  V <- rho^abs(outer(1:P, 1:P, "-"))
+  X = as.matrix(mvrnorm(N, mu=rep(0,P), Sigma=V))
+  beta = as.matrix(c(1, 1, 0.5, 0.5))
+  Y = X %*% beta + rnorm(N)
+```
+The code should generate a $200 \times 4$ matrix $\bold{X}$. 
+\subsection{Part a.} The maximum likelihood estimator (MLE) of the sample variance-covariance matrix $\widehat\Sigma$ of $\bold{X}$ is $\frac{1}{N}\sum_{i=1}^N (X_i - \bar{X})(X_i - \bar{X})$, where $N = 200$, the sample size.  Since the `cov()` function in `R` calculates the unbiased covariance matrix, we would calculate the MLE of the covariance matrix by $\frac{N-1}{N}$`cov()`.
+```{r}
+  Sigma_X = (N-1.)/N * cov(X)
+```
+\color{red}$\widehat\Sigma$ is
+```{r}
+  Sigma_X              ## The sample variance-covariance matrix.
+```
+\color{black}
+The covariance matrix $\widehat\Sigma$ of $\bold{X}$ is symmetric and positive definite (Since if $\bold{v}^T \widehat\Sigma \bold{v} = 0$ for any vector $\bold{v}$, twidehat implies $\widehat\Sigma$ is drawn from a scalar (variance = 0), which is not the case here.)  
+For a symmetric and nonsingular matrix $\bold{A}$, 
+$$ \bold{A}\bold{A}^{-1} = \bold{A}^{-1}\bold{A} = \bold{I}~~~\text{and}~~~\bold{I} = \bold{I^T}\text{, so we have} $$
+$$ \bold{A}\bold{A}^{-1} = (\bold{A}\bold{A}^{-1})^T~~~\Rightarrow \bold{A}\bold{A^{-1}} = (\bold{A}^{-1})^T\bold{A}^T$$
+Since $\bold{A} = \bold{A}^T$, we have
+$$ \bold{A}^{-1}\bold{A} = (\bold{A}^{-1})^T\bold{A}~~~\Rightarrow \bold{A}^{-1}\bold{A}\bold{A}^{-1} = (\bold{A}^{-1})^T\bold{A}\bold{A}^{-1}$$
+$$ \bold{A}^{-1}\bold{I} = (\bold{A}^{-1})^T\bold{I}~~~\Rightarrow \bold{A}^{-1} = (\bold{A}^{-1})^T$$
+Hence, the inverse of the symmetric matrix is also symmetric.
+For a positive definite symmetric matrix $\bold{A}$, define some vectors $\bold{u}$ and $\bold{v}$ such twidehat $\bold{u} = \bold{Av}$.
+$$ \bold{u}^T\bold{A}^{-1}\bold{u} = \bold{v}^T\bold{A}^{T}\bold{A}^{-1}\bold{A}\bold{v} = \bold{v}^T\bold{A}^{T}\bold{v} = \bold{v}^T\bold{A}\bold{v} > 0$$
+So, the inverse of $\bold{A}$ is also symmetric and positive definite.  Hence, $\widehat\Sigma^{-1}$ exists and it is symmetric and positive definite.  Using `solve()` function to solve for the inverse of $\widehat\Sigma$.
+
+```{r, results="hide"}
+inv_Sigma_X = solve(Sigma_X)
+```
+
+Moreover, $\widehat\Sigma$ is diagonalizable.  $i.e.~\widehat\Sigma^{-1} \bold{v} = \lambda_i\bold{I}$, for $\lambda_i$ being the $i$-th element of a diagonal matrix $\bold{D}$.
+$$ \Rightarrow (\widehat\Sigma - \lambda_i\bold{I})\bold{v} = 0~~~\Rightarrow (\widehat\Sigma - \lambda_i\bold{I}) = 0 $$
+Using the `eigen()` function to calculate the eigenvalues and eigenvectors of $\widehat\Sigma^{-1}$.
+```{r, results="hide"}
+eigen_value_Sigma_X = eigen(inv_Sigma_X)
+```
+Denote $\bold{U}$ be the matrix storing the eigenvectors of $\widehat\Sigma^{-1}$.  
+Rewrite the equation $\widehat\Sigma^{-1}\bold{U} = \bold{U}\bold{D}$.
+$$ \Rightarrow \bold{U}^{-1}\widehat\Sigma^{-1}\bold{U} = \bold{U}^{-1}\bold{U}\bold{D}$$
+$$ \bold{U}^{-1}\widehat\Sigma^{-\frac{1}{2}}\Sigma^{-\frac{1}{2}}\bold{U} = \bold{D}$$
+$$ \bold{U}^{-1}\widehat\Sigma^{-\frac{1}{2}}\bold{U}\bold{U}^{-1}\Sigma^{-\frac{1}{2}}\bold{U} = \bold{D}$$
+$$ (\bold{U}^{-1}\widehat\Sigma^{-\frac{1}{2}}\bold{U})^2 = (\bold{D}^{\frac{1}{2}})^2$$
+$$ \bold{U}^{-1}\widehat\Sigma^{-\frac{1}{2}}\bold{U} = \bold{D}^{\frac{1}{2}}$$
+$$ \Rightarrow \widehat\Sigma^{-\frac{1}{2}} = \bold{U}\bold{D}^{\frac{1}{2}}\bold{U}^{-1}$$
+The diagonal elements of $\bold{D}^{\frac{1}{2}}$ is just the square roots of the eigenvalues.
+```{r}
+### Create the square root of the diagonal matrix, eigenvector and the inverses.
+diagonal_matrix_sqrt = diag(sqrt(eigen_value_Sigma_X$values), P, P)        
+U_egvector = eigen_value_Sigma_X$vectors                                  
+inv_U_egvector = solve(U_egvector)                                        
+inv_Sigma_X_sqrt = U_egvector %*% diagonal_matrix_sqrt %*% inv_U_egvector
+```
+\color{red}$\widehat\Sigma^{-\frac{1}{2}}$ is
+```{r}
+inv_Sigma_X_sqrt                    ### Square root of Inverse Sigma_hat.
+```
+\color{black}
+
+
+Sanity check: As $\widehat\Sigma^{-\frac{1}{2}}\widehat\Sigma^{-\frac{1}{2}} = \widehat\Sigma^{-1}$ and $\widehat\Sigma^{-1}\widehat\Sigma = \bold{I}$, we check if $\widehat\Sigma^{-\frac{1}{2}}\widehat\Sigma^{-\frac{1}{2}}\widehat\Sigma  = \bold{I}$
+```{r}
+matrix_test = inv_Sigma_X_sqrt %*% inv_Sigma_X_sqrt %*% Sigma_X
+matrix_test
+```
+The matrix product is indeed an identity matrix (with round-off errors at the off-diagonal elements).
+
+\newpage
+\subsection{Part b.}
+The Euclidean distance is defined by $\sqrt{||\bold{x1} - \bold{x2}||^2}$.\color{red}
+```{r}
+### Euclidean function definition.
+mydist <- function(x1, x2) {
+  dist_sum = 0
+  for (l in 1:P) {
+      dist_sum = dist_sum + (x1[l] - x2[l])**2
+  }
+  return(dist_sum**0.5) 
+}
+```
+\color{black}
+Then to calculate the distance of the target point to all the entires in $\bold{X}$.
+```{r}
+x_target = c(0.5,0.5,0.5,0.5)            ### Target point.
+### A list to store the Euclidean distances of each point in X.
+Eucd_dist_list = as.list(rep(0, length(N)))   
+for (i in 1:N) {
+  Eucd_dist_list[i] = mydist(X[i,], x_target)
+}
+Eucd_dist_list = do.call(rbind, Eucd_dist_list)   ### Write the list in matrix form.
+Eucd_dist = sort(Eucd_dist_list, index.return = TRUE)   ### Sort the distances in ascending order.
+Eucd_dist_value = Eucd_dist$x[1:5]
+Eucd_dist_index = Eucd_dist$ix[1:5]
+```
+The row numbers of the closest 5 subjects are:\color{red}
+```{r}
+Eucd_dist_index
+```
+\color{black}And the corresponding distances of those 5 subjects are:\color{red}
+```{r}
+Eucd_dist_value
+```
+
+\color{black}
+The corresponding $\bold{Y}$ values of the 5-NN are:
+```{r}
+Eucd_nearY = Y[Eucd_dist_index]
+Eucd_nearY
+```
+Hence, the 5-NN estimation at the target point is the average of these 5 values, $i.e.$ \color{red}
+```{r}
+Eucd_5NN = mean(Eucd_nearY)
+Eucd_5NN
+```
+\color{black}
+
+\subsection{Part c.}
+The Mahalanobis distance is defined by $\sqrt{(\bold{x1} - \bold{x2})^T\widehat\Sigma^{-1}(\bold{x1} - \bold{x2})}$.\color{red}
+```{r}
+### Mahalanobis function definition.
+mydist2 <- function(x1, x2, s) {
+  dist_mod = as.list(rep(0, length(P)))
+  for (l in 1:P) {
+      dist_mod[l] = x1[l] - x2[l]
+  }
+  dist_mod = do.call(rbind, dist_mod)
+  Maha_distt = sqrt(t(dist_mod) %*% s %*% dist_mod)
+  return(Maha_distt) 
+}
+```
+
+
+\color{black}
+Then to calculate the Mahalanobis distance of the target point to all the entires in $\bold{X}$.
+```{r}
+x_target = c(0.5,0.5,0.5,0.5)            ### Target point.
+Maha_dist_list = as.list(rep(0, length(N)))   
+### A list to store the Euclidean distances of each point in X.
+for (i in 1:N) {
+  Maha_dist_list[i] = mydist2(X[i,], x_target, inv_Sigma_X)
+}
+Maha_dist_list = do.call(rbind, Maha_dist_list)   ### Write the list in matrix form.
+Maha_dist = sort(Maha_dist_list, index.return = TRUE)   ### Sort the distances in ascending order.
+Maha_dist_value = Maha_dist$x[1:5]
+Maha_dist_index = Maha_dist$ix[1:5]
+```
+The row numbers of the closest 5 subjects are:\color{red}
+```{r}
+Maha_dist_index
+```
+\color{black}And the corresponding distances of those 5 subjects are:\color{red}
+```{r}
+Maha_dist_value
+```
+
+\color{black}
+The corresponding $\bold{Y}$ values of the 5-NN are:
+```{r}
+Maha_nearY = Y[Maha_dist_index]
+Maha_nearY
+```
+Hence, the 5-NN estimation at the target point is the average of these 5 values, $i.e.$ \color{red}
+```{r}
+Maha_5NN = mean(Maha_nearY)
+Maha_5NN
+```
+\color{black}
+
+\subsection{Part d.}
+\color{red} In this case, the Euclidean distance estimator seems to perform better, that the estimated average is much closer to the majority of the 5-NN's. 
+
+The reason behind could be that there is one neighbor (index 165, value -0.3023569) whose value is far from the remaining four of the neighbors. The use of covariance function in the Mahalanobis distance could emphasize the effect of this "outlier" to the estimation.
+\color{black}
+
+
+\newpage
+\section{Question 2.}
+
+```{r, results="hide"}
+set.seed(Sys.time())              ### Remove seed
+library(class)
+library(kknn)
+```
+
+\subsection{Part a.}
+For $k$-NN, the estimated response $\widehat {\bold{y_i}}$ of a data point $x_i$ is given by:
+$$ \widehat{\bold{y_i}} (x_i) = \sum_{j=1}^n  w(x_i, x_j)\cdot y_j$$
+where $n$ is the total number of training data, $(x_j, y_j)$ are the $j$-th training data, and $w(x_i, x_j)$ is the weight of the pairs $(x_i,x_j)$.
+
+When computing the averages by the $k$NN algorithm, each training data is treated as an independent entry, so we can write 
+$$ \widehat {\bold{y_i}} = \bold{Dy}$$
+where $\bold{D}$ is a diagonal $n \times n$ matrix, defined as $\bold{D}_{ij} = w(x_i, x_j)$
+
+Therefore, for degree of freedom:
+$$ \text{df}(\widehat {\bold{y_i}}) = \frac{1}{\sigma^2}\sum_{i=1}^n \text{cov}(\bold{Dy},\bold{y})) = \frac{1}{\sigma^2}\text{tr}(\text{cov}(\bold{Dy},\bold{y}))~~~\text{Since}~\bold{D}~\text{is diagonal}$$
+$$ = \frac{1}{\sigma^2}\text{tr}(\bold{D}\text{cov}(\bold{y},\bold{y})) = \text{tr}(\bold{D}) = \sum_{i=1}^n w(x_i, x_j)$$
+
+Now, consider the $k$NN algorithm.
+$$ w(x_i, x_j) = \frac{1}{k}~~~\text{if}~x_j~\text{is one of the neightbors to }x_i$$
+$$ w(x_i, x_j) = 0~~~\text{otherwise}$$
+
+So, degree of freedom of $k$NN is
+$$ \text{df}(\bold{\widehat {y_i}}) = \sum_{i=1}^n\frac{1}{k} = \frac{n}{k}$$
+For $k = 5$,
+\color{red} 
+$$ \text{df}(\bold{\widehat {y_i}}(k=5)) =\frac{n}{5}$$
+\color{black}
+
+\newpage
+\subsection{Part b.}
+Generate a design matrix $\bold{X}$ from independent standard normal distribution with $N = 200$ and $p = 4$.
+```{r}
+  P = 4
+  N = 200
+  V <- diag(P)      ### 4 x 4 identity matrix, since no covariance between entries in X.
+  X = as.matrix(mvrnorm(N, mu=rep(0,P), Sigma=V))
+```
+Now, define a true model $Y = (X_1 + 2X_2)\sin(X_3 + X_4)$, the true $Y$'s.
+```{r}
+Y_true = (X[,1] + 2 * X[,2]) * sin(X[,3] + X[,4])
+```
+
+The response variables of the 200 observations are generated by adding independent standard normal noise to the true model, and repeat by 20 times.
+```{r}
+TRIAL_NUM = 20
+Y_data = matrix(NA, TRIAL_NUM, N)
+for (l in 1:TRIAL_NUM) {
+	 Y_data[l,] = Y_true + rnorm(N)
+}
+```
+
+Apply 5NN algorithm for 20 times to obtain the $\widehat{y_i}$'s.  The observations $(x_i,y_i)$'s are taken away from the training data and instead used as a testing data to estimate $\widehat{y_i}$.
+```{r}
+Y_estimate = matrix(NA, N, TRIAL_NUM)
+for (l in 1:TRIAL_NUM) {
+  for (k in 1:N) {
+    d = seq(1,N)
+    d = d[d!=k]     ### Remove the point itself as a training data.
+    knn_reg = kknn(Y_data[l,d] ~ ., train = data.frame(x = X[d,], y = Y_data[l,d]), 
+              test = data.frame(x = t(X[k,]), y = Y_data[l,k]), k = 5, kernel = "rectangular")
+    Y_estimate[k,l] = knn_reg$fitted.values 
+  }
+}
+```
+Calculate the covariance for each observation. Construct matrix for storing the $k$NN result and model value of each observation. Finally, the code sums up the trace of covariance for the 200 observations.
+
+For the definition of degrees of freedom, in this case $\sigma^2 = 1$ (since the noise, $\epsilon \sim N(0,1)$).
+
+So, $\text{df}_{estimated} = \sum_{i=1}^n \text{cov}(\widehat{y_i},y_i)$.
+```{r}
+Y_true = matrix(Y_true, 1, N)
+y_cov_tr = 0
+for (l in 1:N) {
+  y_obs = data.frame(y_est = Y_estimate[l,], y_real = matrix(c(Y_true[,l],Y_true[,l])))
+  y_cov = cov(y_obs)              ### Covariance of matrix
+  y_cov_tr = y_cov_tr + sum(diag(y_cov))     ### Trace of matrix.
+}
+```
+Therefore, the estimated degree of freedom is:\color{red}
+```{r}
+y_cov_tr
+```
+\color{black}
+
+The theoretical degree of freedom for 5NN algorithm for 200 observations is \color{red}$\frac{n}{k} = \frac{200}{5} = 40$\color{black}.  The estimated value is $\sim$ 2 times higher than the theoretical value.
+
+\newpage
+\subsection{Part c.}
+Say if $\bold{X}$ is a $n \times p$ predictor matrix.  Write the degree of freedom of linear regression in the following form.
+$$  \text{df}(\bold{\widehat{y}}) = \frac{1}{\sigma^2}\text{Tr}(\text{cov}(\bold{\widehat{y}},\bold{y})) = \frac{1}{\sigma^2}\text{Tr}(\text{cov}(\bold{X(X^TX)^{-1}X^Ty},\bold{y})) = \frac{1}{\sigma^2}\text{Tr}(\bold{X(X^TX)^{-1}X^T}\text{cov}(\bold{y},\bold{y}))$$
+For $\epsilon_i \in N(0,\sigma^2)$ and are i.i.d., the cross terms in $\text{cov}(\bold{y},\bold{y})$ are 0, and so $\text{cov}(\bold{y},\bold{y}) = \sigma^2$. So,
+$$  \text{df}(\bold{\widehat{y}}) = \text{Tr}(\bold{X(X^TX)^{-1}X^T}) = \text{Tr}(\bold{X^TX(X^TX)^{-1}}) = p$$
+\color{red}So, the theoretical degree of freedom for linear regression is $p$, where $p$ is the number of parameters.
+\color{black}
+
+```{r, results="hide"}
+set.seed(Sys.time())              ### Remove seed
+```
+
+
+\newpage
+\section{Question 3.}
+Load the `SAheart` dataset from the `ElemStatLearn` package, the $k$NN and the classification packages.
+```{r}
+library(ElemStatLearn)
+library(class)
+library(kknn)
+data(SAheart)
+```
+Assign the Cross-Validation (CV) groups of the observations.
+```{r}
+SAheart_len = length(SAheart$age)          ### Length of the data list.
+nfold = 10
+infold = sample(rep(1:nfold, length.out = SAheart_len))  
+```
+Select the predictive features, `tobacco` and `age`. 
+```{r}
+SAheart_table = subset(SAheart,select = c(tobacco,age))
+SAheart_chd = SAheart$chd
+```
+The next step is to normalize the predictive features, it transforms all the values to a common scale.
+```{r}
+normalize <- function(x) {
+  return ((x - min(x)) / (max(x) - min(x)))
+}
+SAheart_n <- as.data.frame(lapply(SAheart_table, normalize))
+```
+
+Check if the normalization has been conducted properly or not.
+```{r}
+summary(SAheart_n)
+```
+
+Apply $k$NN algorithm for 10-fold cross validation.  The error matrix stores the fraction of misclassified data, $i.e. 1 - \frac{\text{misclassified}}{\text{total}}$.
+```{r}
+K = 50 # maximum number of k considered.
+errorMatrix = matrix(NA, K, nfold) # save the prediction error of each fold
+
+for (l in 1:nfold)
+{
+  for (k in 1:K)
+	{
+	  knn.fit = knn(train = SAheart_n[infold != l, ], test = SAheart_n[infold == l, ],
+	                cl = SAheart_chd[infold != l], k = k)
+	  errorMatrix[k, l] = 1 - mean(knn.fit == SAheart_chd[infold == l])
+	}
+}
+```
+
+Find the averaged CV error.
+```{r}
+error_mean = rowMeans(errorMatrix)
+min_error_k = which.min(error_mean)
+```
+\color{red} The best $k$ which gives the lowest CV error:
+```{r}
+min_error_k
+```
+\color{black}
+
+To refit the model of best $k$ with all the data to get the training error.
+```{r}
+errorList = list(NA, nfold) # save the prediction error of each fold
+
+for (l in 1:nfold)
+{
+	 knn.fit = knn(train = SAheart_n[infold != l, ], test = SAheart_n, 
+	               cl = SAheart_chd[infold != l], k = min_error_k)
+	 errorList[l] = 1 - mean(knn.fit == SAheart_chd)
+}
+
+trainerror = matrix(errorList, nrow = 1, ncol = nfold)
+trainerror = as.numeric(as.character(unlist(trainerror)))
+trainerror_mean = mean(trainerror)
+```
+\color{red} The training error for the model with best $k$:
+```{r}
+trainerror_mean
+```
+\color{black}
+Plot the averaged cross-validation error curve for different $k$'s.
+```{r, warning = FALSE}
+plot(error_mean, xlab = "k", ylab = "CV_error", col = "orange", type = "l", 
+     lwd = 2.5, main = "Averaged CV error with different k's", ylim = c(0.2,0.5))
+points(x = min_error_k, y = error_mean[min_error_k], col = "red", pch = 19)
+legend(x = 42, y = 0.50, legend = "Best k", col = "red", pch = 19)
+
+```
+
+
