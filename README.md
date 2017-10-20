@@ -4,3 +4,5 @@ Topics covered:
 - k-nearest neighbors (kNN)
 - Cross-validation
 - Degree of freedom determination
+- Feature Selection (AIC, BIC)
+- Writing a regularization algorithm (Lasso)
