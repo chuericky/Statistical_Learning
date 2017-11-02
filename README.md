@@ -6,3 +6,5 @@ Topics covered:
 - Degree of freedom determination
 - Feature Selection (AIC, BIC)
 - Writing a regularization algorithm (Lasso)
+- Support Vector Machine (SVM)
+- Splines
