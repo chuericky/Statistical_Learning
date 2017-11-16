@@ -8,3 +8,6 @@ Topics covered:
 - Writing a regularization algorithm (Lasso)
 - Support Vector Machine (SVM)
 - Splines
+- Kernel estimation
+- Random Forest
+- Boosting (AdaBoost)
