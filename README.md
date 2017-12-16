@@ -11,3 +11,5 @@ Topics covered:
 - Kernel estimation
 - Random Forest
 - Boosting (AdaBoost)
+- PCA
+- Sliced Inverse Regression
