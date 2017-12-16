@@ -1,0 +1,630 @@
+---
+title: "STAT542 HW5"
+author: "Chun Yin Ricky Chue"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(message = FALSE)
+options(width = 1000)
+```
+\section{Question 1}
+For $X = A-bb^T$ is invertible, we prove the matrix $Y = A^{-1}+\frac{A^{-1}bb^TA^{-1}}{1-b^TA^{-1}b}$ is the inverse of $X$ if and only if $XY = YX = I$. Note that $1-b^TA^{-1}b$ is a scalar which is non-zero.
+
+\subsection{If part:} Verify that $XY = I$.
+$$
+\begin{aligned}
+XY &= \left(A-bb^T\right)\left(A^{-1}+\frac{A^{-1}bb^TA^{-1}}{1-b^TA^{-1}b}\right) = AA^{-1}-bb^TA^{-1}+\frac{AA^{-1}bb^TA^{-1}-bb^TA^{-1}bb^TA^{-1}}{1-b^TA^{-1}b}\\
+&= I-bb^TA+\frac{bb^TA^{-1}-bb^TA^{-1}bb^TA^{-1}}{1-b^TA^{-1}b} = I-bb^TA^{-1}+\frac{b\left(1-b^TA^{-1}b\right)b^TA^{-1}}{1-b^TA^{-1}b} \\
+&=I-bb^TA^{-1}+bb^TA^{-1} = I
+\end{aligned}
+$$
+We also verify that $YX = I$.
+$$
+\begin{aligned}
+YX &= \left(A^{-1}+\frac{A^{-1}bb^TA^{-1}}{1-b^TA^{-1}b}\right)\left(A-bb^T\right) = A^{-1}A-A^{-1}bb^T+\frac{A^{-1}bb^TA^{-1}A-A^{-1}bb^TA^{-1}bb^T}{1-b^TA^{-1}b}\\
+&= I-A^{-1}bb^T+\frac{A^{-1}bb^T-A^{-1}bb^TA^{-1}bb^T}{1-b^TA^{-1}b} = I-A^{-1}bb^T+\frac{A^{-1}b\left(1-b^TA^{-1}b\right)b^T}{1-b^TA^{-1}b} \\
+&=I-A^{-1}bb^T+A^{-1}bb^T = I
+\end{aligned}
+$$
+Hence, $XY = YX = I$.
+
+\subsection{Only if part:}
+Consider two cases, first if $b = 0$, then $X = A-bb^T = A$ and $Y = A^{-1}+\frac{A^{-1}bb^TA^{-1}}{1-b^TA^{-1}b} = A^{-1}$, and the fact that $XY = AA^{-1} = I$ and $YX = A^{-1}A = I$ imply that $Y = A^{-1}+\frac{A^{-1}bb^TA^{-1}}{1-b^TA^{-1}b}$ is the inverse of $X = A-bb^T$.
+
+If $b \neq 0$, consider,
+$$
+\left(A-bb^T\right)A^{-1}b = b - bb^TA^{-1}b = b\left(1-b^TA^{-1}b\right) = \left(1-b^TA^{-1}b\right)b 
+$$
+The last step is legitimate since $1-b^TA^{-1}b$ is a scalar.
+
+As $A-bb^T$ is invertible, $\left(A-bb^T\right)A^{-1}$ is also invertible since it is a product of two invertible matrices. Given $b \neq 0$, $\left(A-bb^T\right)A^{-1}b \neq 0$. Hence, $\left(1-b^TA^{-1}b\right)b \neq 0$, which implies $1-b^TA^{-1}b \neq 0$.
+
+As $A-bb^T$ is invertible if and only if $1-b^TA^{-1}b \neq 0$, the proposition is hence proven.
+
+\newpage 
+\section{Question 2.}
+In this part, we write our own code to fit the sliced inverse regression (SIR), and validate it by comparing to the `dr` package. We compare the directions of the principle components, as well as the eigenvalues by the two approaches.  Here, we present the function for our code SIR code.
+```{r}
+sir_fx <- function (x, y, slice = NULL) {
+  n <- length(y)   # Number of data points
+  p <- dim(x)[2]   # Number of dimensions
+  x_center <- scale(x, center=T, scale=F) # Centering x's.
+  svd <- eigen(cov(x)) 
+  Gamma <- svd$vectors
+  Sigma_diag <- diag(1/svd$values) # Diagonal matrix D
+  hat_inv_Sigma_sqrt <- Gamma %*% sqrt(Sigma_diag) %*% t(Gamma) # Sigma^(-1/2)
+  z <- x_center %*% hat_inv_Sigma_sqrt # Transform X to z, which is standardized.
+
+  # Slicing
+  H = slice
+  mydata = matrix(0, nrow = n, ncol = (p+1))
+  mydata[,1:p] <- z
+  mydata[,p+1] <- y
+  mydata = mydata[order(mydata[,p+1]), ] # Sort the dataset with y values.
+  mydata = mydata[,1:p] # After sorting, get the z values only.
+
+  # Spliting the dataset in different slices, and calculate the sample means of the slices.
+  id = split(1:n, cut(seq_along(1:n), H, labels = FALSE))
+  id_mat = as.matrix(id) # Number of samples in each slice.
+  slice_num <- lengths(id_mat)
+  samplemeans = sapply(1:H, function(h, mydata, id, p) colMeans(mydata[id[[h]], ]), mydata, id)
+  
+  # Mean of the dataset.
+  means = colMeans(mydata)
+  
+  # Sample mean of slice minus mean of dataset.
+  diff <- sweep(t(samplemeans[,]),2,means)
+  
+  # Multiply number of samples to one of the diff matrix.
+  diff_num <- sapply(1:p, function(h, diff, slice_num) diff[,h] * slice_num, diff, slice_num)
+  M <- t(diff_num) %*% diff / n
+
+  # Eigenvectors and eigenvalues of M.
+  M_eig <- eigen(M)
+  # Returning the eigenvalues of M and the eigenvectors in the original space.
+  return(list(eigen(M)$values, hat_inv_Sigma_sqrt %*% eigen(M)$vectors))
+}
+```
+\newpage
+\subsection{Part a.}
+We generate 1000 observations from the model $y = 0.4(X_1 + X_2) + 0.125(X_1 + X_2)^5 + 0.5\varepsilon$, which can be detected by SIR. Here, $X = [X_1, X_2, ..., X_6]$, $y$ is the response and $\varepsilon$ is the standard error term.
+
+```{r}
+library(dr)
+# generate some data with one direction
+set.seed(4)
+n = 1000; p = 6; H = 10
+x = matrix(rnorm(n*p), n, p)
+b = matrix(c(1, 1, rep(0, p-2)))
+y = 0.4*(x %*% b) + 0.125*(x %*% b)^5 + 0.5*rnorm(n)
+
+# Fitting from the dr package.
+fit.sir = dr(y~., data = data.frame(x, y), method = "sir", nslices=H)
+sir_eig <- sir_fx(x, y, H) # Fitting from our own code.
+```
+We compare first the eigenvalues of different principle components computed from the two appraoches. The solid green and dashed black lines represent the plots by the `dr` package and our own code respectively. They match on predicting the six principle components.  Particularly, the first principle component is relatively important compared to the remaining five components.
+```{r, fig.width = 8, fig.height = 3.5}
+plot(c(0.9,6.1),c(0,0.85),type="n",xlab = "Principle components", ylab = "Eigenvalues")
+lines(seq(1,p), fit.sir$evalues, col = "green")
+lines(seq(1,p), sir_eig[[1]], col = "black", lty = 2)
+legend(4.8,0.8, c("dr","own code"),col=c("green","black"),lty=c(1,2))
+title("Eigenvalues of principle components by two approaches")
+```
+
+Next, we compare the directions of the first principle component predicted by the two approaches. The two approaches might predict directions with opposite signs, so we manually add a minus sign to the result by one approach to match the directions.
+```{r, fig.width = 8, fig.height = 3.5}
+# Eigenvectors predicted by own code.
+sir_evec1 <- -sir_eig[[2]][,1]
+plot(c(0.9,6.1),c(-0.1,0.75),type="n",xlab = "beta's", ylab = "coefficient values")
+lines(seq(1,p), sir_evec1, col = "green")
+lines(seq(1,p), fit.sir$evectors[,1], col = "black", lty = 2)
+legend(4.5,0.7, c("dr 1st","own code 1st"),col=c("green","black"),lty=c(1,2))
+title("Coefficients of first principle component by two approaches")
+```
+
+The figure shows the $\beta$'s (directions) of the first principle component predicted by the two approaches. The solid green and dashed black lines represent the prediction of the first principle components from the `dr` package and own code respectively. Again, the directions predicted by the two approaches match.
+
+The truth is, the model is predicted by the first two components of $X$, i.e. $X_1$ and $X_2$. As can be seen in the figure, the $\beta$'s given by the first two $X$ components are significant, and they are almost the same in magnitude, which means the two directions give equal contribution in explaining the data. The other components are close to zero, which means they barely explain any tendency in the data.
+
+\subsection{Part b.}
+We generate 1000 observations from the model $y = 0.4(X_1 + X_2)^2 + 0.5\varepsilon$, which cannot be detected by SIR because of the quadratic behavior of the function, i.e. given $y$, there could be multiple values of $X$'s. The notations are the same as in part a.
+```{r}
+set.seed(1)
+x2 = matrix(rnorm(n*p), n, p)
+y2 = 0.4*(x2 %*% b)^2 + 0.5*rnorm(n)
+
+# Fitting from the dr package.
+fit.sir = dr(y2~., data = data.frame(x2, y2), method = "sir", nslices=H)
+sir_eig <- sir_fx(x2, y2, H) # Fitting from our own code.
+```
+We compare first the eigenvalues of different principle components computed from the two appraoches. The solid green and dashed black lines represent the plots by the `dr` package and our own code respectively. They match on predicting the six principle components.  Particularly, the first 2 principle components are relatively important compared to the remaining four components.
+```{r, fig.width = 8, fig.height = 3.5}
+plot(c(0.9,6.1),c(0,0.03),type="n",xlab = "Principle components", ylab = "Eigenvalues")
+lines(seq(1,p), fit.sir$evalues, col = "green")
+lines(seq(1,p), sir_eig[[1]], col = "black", lty = 2)
+legend(4.8,0.03, c("dr","own code"),col=c("green","black"),lty=c(1,2))
+title("Eigenvalues of principle components by two approaches")
+```
+
+Next, we compare the directions of the first two principle components predicted by the two approaches.
+```{r, fig.width = 8, fig.height = 4.3}
+# Eigenvectors predicted by own code.
+sir_evec1 <- -sir_eig[[2]][,1]
+sir_evec2 <- sir_eig[[2]][,2]
+plot(c(0.9,6.1),c(-0.9,2),type="n",xlab = "beta's", ylab = "coefficient values")
+lines(seq(1,p), sir_evec1, col = "green")
+lines(seq(1,p), sir_evec2, col = "cyan")
+lines(seq(1,p), fit.sir$evectors[,1], col = "black", lty = 2)
+lines(seq(1,p), fit.sir$evectors[,2], col = "red", lty = 2)
+legend(4.8,2, c("dr 1st","dr 2nd","own code 1st","own code 2nd"),
+       col=c("green","cyan","black","red"),lty=c(1,1,2,2))
+title("Coefficients of first two principle components by two approaches")
+```
+
+In this case, the $\beta$'s apart from the first two $X$'s are comparable to those from $\beta_1$ and $\beta_2$ (coefficients of $X_1$ and $X_2$). That means, the SIR is not able to identify the most important directions $X_1$ and $X_2$. The results from the `dr` and own code match though.
+
+\newpage
+\section{Question 3.}
+We perform a data analysis on tmdb movie. We predict two variables `revenue` by regression and if `vote_average` is greater than 7 by classification. This is a log transformation for the budget and revenues, i.e. $Y = \log_{10}(1+X)$.
+```{r echo=FALSE, message=FALSE}
+logtrans <- function(X)   return(log10(1 + X))
+```
+\subsection{Data preprocessing}
+We perform data pre-processing. Firstly, we eliminate the rows with NA entries. Moreover, some missing values of `revenue`, `budgets` and `runtime` are imputed by 0, which are shown in the following histograms that skew the distribution. For simplicity, we eliminate those rows with `revenue`, `budget` or `runtime` equal 0. The skewnesses in `revenue` and `budget` are more obvious if the features are log-transformed. We further classify `vote_average` above 7 to be 1, and those below 7 to be -1 for classification purpose.
+```{r echo=FALSE, message=FALSE, fig.width = 8, fig.height = 2.9}
+movie_df <- read.csv("tmdb_5000_movies.csv")[c("budget","id","original_language","release_date","runtime","revenue","vote_average")]
+movie_df <- na.omit(movie_df)  # Eliminate the entries with NAN values.
+movie_df["log_budget"] <- lapply(movie_df["budget"], logtrans) 
+movie_df["log_revenue"] <- lapply(movie_df["revenue"], logtrans) 
+hist(as.double(movie_df$log_revenue), xlab = "log(revenue)")
+hist(as.double(movie_df$log_budget), xlab = "log(budget)")
+hist(as.double(movie_df$runtime), xlab = "runtime")
+# Find the union of the indices which miss one of the entries.
+budget_miss <- which(movie_df["log_budget"] == 0)
+revenue_miss <- which(movie_df["log_revenue"] == 0)
+runtime_miss <- which(movie_df["runtime"] == 0)
+miss_union <- union(runtime_miss, union(budget_miss, revenue_miss)) # 1572 entries in total.
+movie_df <- movie_df[-miss_union,]
+movie_df["vote_avg_gp"] <- -1
+movie_df["vote_avg_gp"][which(movie_df$vote_average > 7), ] <- 1
+```
+2 data points are with `NA` entries, and 1572 entries are with either `budget`, `revenue` or `runtime` being 0. We remove all of those data points and so the number of data points remaining is: $4803 - 2 - 1572 = 3229$.
+
+Next, we note that a majority of movies (3102 out of 3229, 96.1\%) are with original language in English (`en`). We introduce a feature `language_en`, which takes 1 if the original language is in English and -1 otherwise.
+```{r echo=FALSE, message=FALSE, fig.width = 8, fig.height = 3.5}
+movie_df["language_en"] <- -1
+movie_df["language_en"][which(movie_df$original_language == "en"), ] <- 1
+ldf <- table(movie_df$language_en)
+piepercent <- round(100 * ldf/sum(ldf), 1)
+pie(ldf, labels = piepercent, main = "Pie chart of percentages of original languages", col = rainbow(length(ldf)), radius = 1)
+legend("topright", c("Others","English"), cex = 0.8, fill = rainbow(length(ldf)))
+```
+
+For `release_date`, we treat the release year as a continuous variable, and the distribution is shown in the following histogram. For released month, we make it as a categorical variable, with movies released between January and June classified as -1, and otherwise 1.
+
+```{r echo=FALSE, message=FALSE, fig.width = 8, fig.height = 2.9}
+tmp <- as.Date(movie_df$release_date, '%Y-%m-%d')
+movie_df["year"] <- as.numeric(format(tmp,'%Y'))
+hist(movie_df$year, xlab = "Release year")
+```
+
+
+```{r echo=FALSE, message=FALSE, fig.width = 8, fig.height = 3.5}
+movie_df["month"] <- -1
+movie_df["month"][which(as.numeric(format(tmp,'%m')) >= 7), ] <- 1
+mdf <- table(movie_df$month)
+piepc <- round(100 * mdf/sum(mdf), 1)
+pie(mdf, labels = piepc, main = "Pie chart of percentages of released month", col = rainbow(length(mdf)), radius = 1)
+legend("topright", c("Jan - Jun","Jul - Dec"), cex = 0.8, fill = rainbow(length(mdf)))
+```
+
+We discover the correlations between the features and the responses. We visualize it by pairwise scatter plots. For the first inspection, we see there is positive (although small) correlations between `runtime` and `log_budget` to `log_revenue`.
+
+```{r echo=FALSE, message=FALSE}
+movie_df <- movie_df[c("id","runtime","log_budget","language_en","year","month","log_revenue","vote_avg_gp")]
+movie_df_var <- movie_df[c("runtime","log_budget","language_en","year","month","log_revenue","vote_avg_gp")]
+pairs(movie_df_var)
+```
+
+We split movies with odd `id` and even `id` to be training and testing datasets respectively.
+```{r echo=FALSE, message=FALSE}
+set.seed(34)
+movie_df_train <- movie_df[which((movie_df$id %% 2) != 0), ]
+movie_df_test <- movie_df[which((movie_df$id %% 2) == 0), ]
+n <- dim(movie_df_train)[1]  # Number of training sets
+K <- 5            # Number of CV folds
+movie_df_train <- movie_df_train[sample(n),] # Shuffle the data
+movie_df_train["CVfold"] <- cut(seq(1,n),breaks=K,labels=FALSE) # Create 5 equally sized folds.
+feature_x = c("runtime","log_budget","language_en","year","month")
+```
+
+\subsection{Regression}
+We perform regression of predicting `log_revenue` by using multiple algorithms, here we use SVM, random forest. In all algorithms, we perform K-fold cross validation (CV) on the training set to look for tune the hyperparameters, and report the test error using the tuned hyperparameter and the trained model on the test set. For regression, we use mean square error for error measurement metric. We firstly present the result predicted by SVM.
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, fig.width = 8, fig.height = 3.5}
+library("e1071")
+C_par <- c(0.01,0.03,0.1,0.3,1,3,10,30,100)
+C_len <- length(C_par)
+svmCVpred_err <- matrix(0., nrow = C_len, ncol = K) # A vector to store the prediction errors
+
+for (j in 1:C_len) { #C_len
+  for (i in 1:K) { #K
+    CVtrain_ind <- which(movie_df_train["CVfold"] != i)
+    CVtest_ind <- which(movie_df_train["CVfold"] == i)
+    CVtrain_x <- data.matrix(movie_df_train[feature_x])[CVtrain_ind,]
+    CVtrain_y <- data.matrix(movie_df_train["log_revenue"])[CVtrain_ind,]
+    CVtest_x <- data.matrix(movie_df_train[feature_x])[CVtest_ind,]
+    CVtest_y <- data.matrix(movie_df_train["log_revenue"])[CVtest_ind,]
+    svm.fit <- svm(CVtrain_y ~ ., data = data.frame(CVtrain_x, CVtrain_y), type='eps-regression',
+                   kernel='radial', scale=FALSE, cost = C_par[j])
+    svm_CVfunc = predict(svm.fit, CVtest_x, decision.values = TRUE)
+    svmCVpred_err[j,i] <- mean((svm_CVfunc - CVtest_y)^2)
+  }
+}
+
+# Mean of the CV folds for each cost, and find the minimum
+svmCV_mean <- rowMeans(svmCVpred_err)
+svmCV_min_err_C <- which.min(svmCV_mean)
+
+svmrealpred_err <- matrix(0., nrow = C_len, ncol = 1) # A vector to store the prediction errors
+
+# Put the best cost in the real testing error.
+trainsvm_x <- data.matrix(movie_df_train[feature_x])[,]
+trainsvm_y <- data.matrix(movie_df_train["log_revenue"])[,]
+testsvm_x <- data.matrix(movie_df_test[feature_x])[,]
+testsvm_y <- data.matrix(movie_df_test["log_revenue"])[,]
+
+for (j in 1:C_len) {
+  svm_real.fit <- svm(trainsvm_y ~ ., data = data.frame(trainsvm_x, trainsvm_y),type='eps-regression',
+                    kernel='radial', scale=FALSE, cost = C_par[j]) #C_par[svmCV_min_err_C])
+  svm_realfunc = predict(svm_real.fit, testsvm_x, decision.values = TRUE)
+  svmrealpred_err[j] <- mean((svm_realfunc - testsvm_y)^2)
+}
+
+plot(C_par, svmCV_mean, log="x", xlab = "C", ylab = "Mean squared error", col = "red", type = "l",
+lwd = 2.5, main = "SVM error on log_revenue with different C's for movie prediction", ylim = c(0.64,1.2))
+lines(C_par, svmrealpred_err, col = "blue", type = "l", lwd = 2.5)
+points(x = C_par[svmCV_min_err_C], y = svmCV_mean[svmCV_min_err_C], col = "red", pch = 19)
+points(x = C_par[svmCV_min_err_C], y = svmrealpred_err[svmCV_min_err_C], col = "blue", pch = 19)
+legend(x = 0.01, y = 1.2, legend = c("CV error","test error"), col = c("red","blue"), lty = 1)
+```
+
+For the figure above, we show the CV and test errors. In both cases, $C = 1$ is the best tuned cost in CV. It turns out it gives the best prediction results on the test set, with mean squared error of `log_revenue` of:
+```{r echo=FALSE, message=FALSE}
+print(svmrealpred_err[svmCV_min_err_C])
+```
+
+We then try random forest algorithm. There are three hyperparameters, namely `ntree`, `mtry` and `nodesize` respectively. We can do a 3D grid search for training, but that is too time-consuming. We instead tune one of the three parameters, keeping the other two fixed at default value. Then we choose the best tuned parameters in each case for testing set.
+
+```{r echo=FALSE, message=FALSE, fig.width = 8, fig.height = 3.5}
+library(randomForest)
+set.seed(1)
+mtry_arr <- seq(1,5,1) # The array for different m_try
+mtry_arrlen <- length(mtry_arr)
+
+### Varying mtry.
+rfmtryCVpred_err <- matrix(0., nrow = mtry_arrlen, ncol = K) # A vector to store the prediction errors
+
+for (j in 1:mtry_arrlen) { #mtry_arrlen
+  for (i in 1:K) { #K
+    CVtrain_ind <- which(movie_df_train["CVfold"] != i)
+    CVtest_ind <- which(movie_df_train["CVfold"] == i)
+    CVtrain_x <- data.matrix(movie_df_train[feature_x])[CVtrain_ind,]
+    CVtrain_y <- data.matrix(movie_df_train["log_revenue"])[CVtrain_ind,]
+    CVtest_x <- data.matrix(movie_df_train[feature_x])[CVtest_ind,]
+    CVtest_y <- data.matrix(movie_df_train["log_revenue"])[CVtest_ind,]
+    rf.fit = randomForest(CVtrain_x, CVtrain_y, mtry = mtry_arr[j])
+    rfmtry_CVfunc = predict(rf.fit, CVtest_x) # Testing the random forest model.
+    rfmtryCVpred_err[j,i] <- mean((rfmtry_CVfunc - CVtest_y)^2)
+  }
+}
+
+# Mean of the CV folds for each mtry, and find the minimum
+rfmtryCV_mean <- rowMeans(rfmtryCVpred_err)
+rfmtryCV_min_err <- which.min(rfmtryCV_mean)
+
+# Varying nodesize
+set.seed(1)
+nodesize_arr <- seq(1,19,2) # The array for different nodesize
+nodesize_arrlen <- length(nodesize_arr)
+
+rfnodesizeCVpred_err <- matrix(0., nrow = nodesize_arrlen, ncol = K) # A vector to store the prediction errors
+
+for (j in 1:nodesize_arrlen) { #nodesize_arrlen
+  for (i in 1:K) { #K
+    CVtrain_ind <- which(movie_df_train["CVfold"] != i)
+    CVtest_ind <- which(movie_df_train["CVfold"] == i)
+    CVtrain_x <- data.matrix(movie_df_train[feature_x])[CVtrain_ind,]
+    CVtrain_y <- data.matrix(movie_df_train["log_revenue"])[CVtrain_ind,]
+    CVtest_x <- data.matrix(movie_df_train[feature_x])[CVtest_ind,]
+    CVtest_y <- data.matrix(movie_df_train["log_revenue"])[CVtest_ind,]
+    rf.fit = randomForest(CVtrain_x, CVtrain_y, nodesize = nodesize_arr[j])
+    rfnodesize_CVfunc = predict(rf.fit, CVtest_x) # Testing the random forest model.
+    rfnodesizeCVpred_err[j,i] <- mean((rfnodesize_CVfunc - CVtest_y)^2)
+  }
+}
+
+# Mean of the CV folds for each nodesize, and find the minimum
+rfnodesizeCV_mean <- rowMeans(rfnodesizeCVpred_err)
+rfnodesizeCV_min_err <- which.min(rfnodesizeCV_mean)
+
+plot(mtry_arr, rfmtryCV_mean, xlab = "mtry/nodesize", ylab = "Mean squared error", col = "red", type = "l",
+lwd = 2.5, main = "Random forest error on log_revenue with different hyperparameters", xlim = c(1,19), ylim = c(0.43,0.53))
+lines(nodesize_arr, rfnodesizeCV_mean, col = "blue", type = "l", lwd = 2.5)
+points(x = mtry_arr[rfmtryCV_min_err], y = rfmtryCV_mean[rfmtryCV_min_err], col = "red", pch = 19)
+points(x = nodesize_arr[rfnodesizeCV_min_err], y = rfnodesizeCV_mean[rfnodesizeCV_min_err], col = "blue", pch = 19)
+legend(x = 13, y = 0.48, legend = c("mtry CV error","nodesize CV error"), col = c("red","blue"), lty = 1)
+```
+
+The above figure shows the CV error when varying `mtry` and `nodesize`, represented by red and blue lines respectively. The optimal `mtry` = 2, which is in line with the recommended value $p/3 = 5/3 = 2$, where $p$ is the number of features. The CV error does not depend much on the nodesize, and the optimal value is the package recommended value, which is 5.
+
+```{r echo=FALSE, message=FALSE, fig.width = 8, fig.height = 3.5}
+# Varying ntree
+set.seed(1)
+ntree_arr <- seq(200,1000,100) # The array for different nodesize
+ntree_arrlen <- length(ntree_arr)
+
+rfntreeCVpred_err <- matrix(0., nrow = ntree_arrlen, ncol = K) # A vector to store the prediction errors
+
+for (j in 1:ntree_arrlen) { #ntree_arrlen
+  for (i in 1:K) { #K
+    CVtrain_ind <- which(movie_df_train["CVfold"] != i)
+    CVtest_ind <- which(movie_df_train["CVfold"] == i)
+    CVtrain_x <- data.matrix(movie_df_train[feature_x])[CVtrain_ind,]
+    CVtrain_y <- data.matrix(movie_df_train["log_revenue"])[CVtrain_ind,]
+    CVtest_x <- data.matrix(movie_df_train[feature_x])[CVtest_ind,]
+    CVtest_y <- data.matrix(movie_df_train["log_revenue"])[CVtest_ind,]
+    rf.fit = randomForest(CVtrain_x, CVtrain_y, ntree = ntree_arr[j])
+    rfntree_CVfunc = predict(rf.fit, CVtest_x) # Testing the random forest model.
+    rfntreeCVpred_err[j,i] <- mean((rfntree_CVfunc - CVtest_y)^2)
+  }
+}
+
+# Mean of the CV folds for each nodesize, and find the minimum
+rfntreeCV_mean <- rowMeans(rfntreeCVpred_err)
+rfntreeCV_min_err <- which.min(rfntreeCV_mean)
+
+plot(ntree_arr, rfntreeCV_mean, xlab = "ntree", ylab = "Mean squared error", col = "red", type = "l",
+lwd = 2.5, main = "Random forest error on log_revenue with different hyperparameters", xlim = c(200,1000), ylim = c(0.48,0.56))
+points(x = ntree_arr[rfntreeCV_min_err], y = rfntreeCV_mean[rfntreeCV_min_err], col = "red", pch = 19)
+legend(x = 800, y = 0.56, legend = c("ntree CV error"), col = c("red"), lty = 1)
+```
+
+The CV error does not depend on `ntree`. In the above CV, we choose (`mtry`,`nodesize`,`ntree`) = (2,5,200), and report the prediction error by Random Forest.
+
+```{r echo=FALSE, message=FALSE, fig.width = 8, fig.height = 3.5}
+# Put the best cost in the real testing error.
+trainrf_x <- data.matrix(movie_df_train[feature_x])[,]
+trainrf_y <- data.matrix(movie_df_train["log_revenue"])[,]
+testrf_x <- data.matrix(movie_df_test[feature_x])[,]
+testrf_y <- data.matrix(movie_df_test["log_revenue"])[,]
+
+rf_real.fit <- randomForest(trainrf_x, trainrf_y, ntree = ntree_arr[rfntreeCV_min_err], importance = TRUE,
+                            nodesize = nodesize_arr[rfnodesizeCV_min_err], mtry = mtry_arr[rfmtryCV_min_err])
+rf_realfunc = predict(rf_real.fit, testrf_x)
+rfrealpred_err <- mean((rf_realfunc - testrf_y)^2)
+```
+
+As can be seen, Random Forest outperforms SVM in this dataset, both on CV error and test errors.  As random forest gives a better prediction than SVM, we calculate the variable importance from the Random Forest algorithm. The variable importance is based on the mean decrease in accuracy after removing the feature averaged over all trees.
+
+```{r echo=FALSE, message=FALSE, fig.width = 8, fig.height = 3.5}
+print(importance(rf_real.fit, type = 1))
+plot(importance(rf_real.fit, type = 1), ylab = "importance")
+```
+
+As can see in the above plot, budget accounts for 62\% of the importance in the prediction, which is the most important features predicting the `revenue`.  `Runtime` and `month` account for less than 5\% of importance, those are not important indicators whether the movie has a high revenue or not.
+
+
+
+\subsection{Classification}
+We again use SVM and Random Forest to classify if the movie is getting a high rate (over 7) or not.  The following histogram shows the frequencies of the movie with rating lower than 7 (group -1) versus that with rating higher than 7 (group +1). There is an imbalance of frequencies that we have to deal with. Here, we put in `class.weights` equal to the inverse of occurences in each class in the algorithm, i.e. The movie with higher rating would receive higher weights due to smaller number of occurrence.
+
+```{r echo=FALSE, message=FALSE, fig.width = 8, fig.height = 3.5}
+hist(movie_df$vote_avg_gp, xlab = "vote_avg_gp")
+```
+
+```{r echo=FALSE, message=FALSE, fig.width = 8, fig.height = 3.5}
+svmCVpred_err <- matrix(0., nrow = C_len, ncol = K) # A vector to store the prediction errors
+
+for (j in 1:C_len) { #C_len
+  for (i in 1:K) { #K
+    CVtrain_ind <- which(movie_df_train["CVfold"] != i)
+    CVtest_ind <- which(movie_df_train["CVfold"] == i)
+    CVtrain_x <- data.matrix(movie_df_train[feature_x])[CVtrain_ind,]
+    CVtrain_y <- data.matrix(movie_df_train["vote_avg_gp"])[CVtrain_ind,]
+    CVtest_x <- data.matrix(movie_df_train[feature_x])[CVtest_ind,]
+    CVtest_y <- data.matrix(movie_df_train["vote_avg_gp"])[CVtest_ind,]
+    # Weight for each class.
+    CV_weight = c("-1" = length(which(CVtrain_y == 1)), "1" = length(which(CVtrain_y == -1)))
+    svm.fit <- svm(CVtrain_y ~ ., data = data.frame(CVtrain_x, CVtrain_y), type='C-classification',
+                   kernel='radial', scale=FALSE, cost = C_par[j], class.weights = CV_weight)
+    svm_CVfunc = predict(svm.fit, CVtest_x)
+    tab = table(svm_CVfunc, CVtest_y)
+    svmCVpred_err[j,i] <- 1-sum(diag(tab))/sum(tab)
+  }
+}
+
+# Mean of the CV folds for each cost, and find the minimum
+svmCV_mean <- rowMeans(svmCVpred_err)
+svmCV_min_err_C <- which.min(svmCV_mean)
+
+svmrealpred_err <- matrix(0., nrow = C_len, ncol = 1) # A vector to store the prediction errors
+
+# Put the best cost in the real testing error.
+trainsvm_x <- data.matrix(movie_df_train[feature_x])[,]
+trainsvm_y <- data.matrix(movie_df_train["vote_avg_gp"])[,]
+testsvm_x <- data.matrix(movie_df_test[feature_x])[,]
+testsvm_y <- data.matrix(movie_df_test["vote_avg_gp"])[,]
+
+test_weight = c("-1" = length(which(trainsvm_y == 1)), "1" = length(which(trainsvm_y == -1)))
+
+for (j in 1:C_len) {
+  svm_real.fit <- svm(trainsvm_y ~ ., data = data.frame(trainsvm_x, trainsvm_y),type='C-classification',
+                    kernel='radial', scale=FALSE, cost = C_par[j], class.weights = test_weight)
+  svm_realfunc = predict(svm_real.fit, testsvm_x)
+  tab = table(svm_realfunc, testsvm_y)
+  svmrealpred_err[j] <- 1-sum(diag(tab))/sum(tab)
+}
+
+plot(C_par, svmCV_mean, log="x", xlab = "C", ylab = "Misclassification error", col = "red", type = "l",
+lwd = 2.5, main = "SVM error on vote_avg_gp with different C's for movie prediction", ylim = c(0.26,0.31))
+lines(C_par, svmrealpred_err, col = "blue", type = "l", lwd = 2.5)
+points(x = C_par[svmCV_min_err_C], y = svmCV_mean[svmCV_min_err_C], col = "red", pch = 19)
+points(x = C_par[svmCV_min_err_C], y = svmrealpred_err[svmCV_min_err_C], col = "blue", pch = 19)
+legend(x = 12, y = 0.31, legend = c("CV error","test error"), col = c("red","blue"), lty = 1)
+```
+
+For the figure above, we show the CV and test misclassification errors. In both cases, $C = 0.3$ is the best tuned cost in CV. It turns out it gives the best prediction results on the test set, with misclassification error of `vote_avg_gp` of:
+
+```{r echo=FALSE, message=FALSE}
+print(svmrealpred_err[svmCV_min_err_C])
+```
+
+We repeat by random forest algorithm. We tune parameters `ntree`, `nodesize` and `mtry` for testing set.
+
+```{r echo=FALSE, message=FALSE, fig.width = 8, fig.height = 3.5}
+set.seed(1)
+mtry_arr <- seq(1,5,1) # The array for different m_try
+mtry_arrlen <- length(mtry_arr)
+
+### Varying mtry.
+rfmtryCVpred_err <- matrix(0., nrow = mtry_arrlen, ncol = K) # A vector to store the prediction errors
+
+for (j in 1:mtry_arrlen) { #mtry_arrlen
+  for (i in 1:K) { #K
+    CVtrain_ind <- which(movie_df_train["CVfold"] != i)
+    CVtest_ind <- which(movie_df_train["CVfold"] == i)
+    CVtrain_x <- data.matrix(movie_df_train[feature_x])[CVtrain_ind,]
+    CVtrain_y <- data.matrix(movie_df_train["vote_avg_gp"])[CVtrain_ind,]
+    CVtest_x <- data.matrix(movie_df_train[feature_x])[CVtest_ind,]
+    CVtest_y <- data.matrix(movie_df_train["vote_avg_gp"])[CVtest_ind,]
+    rf.fit = randomForest(CVtrain_x, factor(CVtrain_y), mtry = mtry_arr[j])
+    rfmtry_CVfunc = predict(rf.fit, CVtest_x) # Testing the random forest model.
+    tab = table(rfmtry_CVfunc, CVtest_y)
+    rfmtryCVpred_err[j,i] <- 1-sum(diag(tab))/sum(tab)
+  }
+}
+
+# Mean of the CV folds for each mtry, and find the minimum
+rfmtryCV_mean <- rowMeans(rfmtryCVpred_err)
+rfmtryCV_min_err <- which.min(rfmtryCV_mean)
+
+# Varying nodesize
+set.seed(1)
+nodesize_arr <- seq(1,19,2) # The array for different nodesize
+nodesize_arrlen <- length(nodesize_arr)
+
+rfnodesizeCVpred_err <- matrix(0., nrow = nodesize_arrlen, ncol = K) # A vector to store the prediction errors
+
+for (j in 1:nodesize_arrlen) { #nodesize_arrlen
+  for (i in 1:K) { #K
+    CVtrain_ind <- which(movie_df_train["CVfold"] != i)
+    CVtest_ind <- which(movie_df_train["CVfold"] == i)
+    CVtrain_x <- data.matrix(movie_df_train[feature_x])[CVtrain_ind,]
+    CVtrain_y <- data.matrix(movie_df_train["vote_avg_gp"])[CVtrain_ind,]
+    CVtest_x <- data.matrix(movie_df_train[feature_x])[CVtest_ind,]
+    CVtest_y <- data.matrix(movie_df_train["vote_avg_gp"])[CVtest_ind,]
+    rf.fit = randomForest(CVtrain_x, factor(CVtrain_y), nodesize = nodesize_arr[j])
+    rfnodesize_CVfunc = predict(rf.fit, CVtest_x) # Testing the random forest model.
+    tab = table(rfnodesize_CVfunc, CVtest_y)
+    rfnodesizeCVpred_err[j,i] <- 1-sum(diag(tab))/sum(tab)
+  }
+}
+
+# Mean of the CV folds for each nodesize, and find the minimum
+rfnodesizeCV_mean <- rowMeans(rfnodesizeCVpred_err)
+rfnodesizeCV_min_err <- which.min(rfnodesizeCV_mean)
+
+plot(mtry_arr, rfmtryCV_mean, xlab = "mtry/nodesize", ylab = "Misclassification error", col = "red", type = "l",
+lwd = 2.5, main = "Random forest error on vote_avg_gp with different hyperparameters", xlim = c(1,19), ylim = c(0.18,0.24))
+lines(nodesize_arr, rfnodesizeCV_mean, col = "blue", type = "l", lwd = 2.5)
+points(x = mtry_arr[rfmtryCV_min_err], y = rfmtryCV_mean[rfmtryCV_min_err], col = "red", pch = 19)
+points(x = nodesize_arr[rfnodesizeCV_min_err], y = rfnodesizeCV_mean[rfnodesizeCV_min_err], col = "blue", pch = 19)
+legend(x = 13, y = 0.24, legend = c("mtry CV error","nodesize CV error"), col = c("red","blue"), lty = 1)
+```
+
+The above figure shows the CV error when varying `mtry` and `nodesize`, represented by red and blue lines respectively. The optimal `mtry` = 1, which is in line with the recommended value $p/3 = 5/3 = 2$, where $p$ is the number of features. The CV error does not depend much on the nodesize, and the optimal value is 7.
+
+```{r echo=FALSE, message=FALSE, fig.width = 8, fig.height = 3.5}
+# Varying ntree
+set.seed(1)
+ntree_arr <- seq(200,1000,100) # The array for different nodesize
+ntree_arrlen <- length(ntree_arr)
+
+rfntreeCVpred_err <- matrix(0., nrow = ntree_arrlen, ncol = K) # A vector to store the prediction errors
+
+for (j in 1:ntree_arrlen) { #ntree_arrlen
+  for (i in 1:K) { #K
+    CVtrain_ind <- which(movie_df_train["CVfold"] != i)
+    CVtest_ind <- which(movie_df_train["CVfold"] == i)
+    CVtrain_x <- data.matrix(movie_df_train[feature_x])[CVtrain_ind,]
+    CVtrain_y <- data.matrix(movie_df_train["vote_avg_gp"])[CVtrain_ind,]
+    CVtest_x <- data.matrix(movie_df_train[feature_x])[CVtest_ind,]
+    CVtest_y <- data.matrix(movie_df_train["vote_avg_gp"])[CVtest_ind,]
+    rf.fit = randomForest(CVtrain_x, factor(CVtrain_y), ntree = ntree_arr[j])
+    rfntree_CVfunc = predict(rf.fit, CVtest_x) # Testing the random forest model.
+    tab = table(rfntree_CVfunc, CVtest_y)
+    rfntreeCVpred_err[j,i] <- 1-sum(diag(tab))/sum(tab)
+  }
+}
+
+# Mean of the CV folds for each nodesize, and find the minimum
+rfntreeCV_mean <- rowMeans(rfntreeCVpred_err)
+rfntreeCV_min_err <- which.min(rfntreeCV_mean)
+
+plot(ntree_arr, rfntreeCV_mean, xlab = "ntree", ylab = "Misclassification error", col = "red", type = "l",
+lwd = 2.5, main = "Random forest error on vote_avg_gp with different hyperparameters", xlim = c(200,1000), ylim = c(0.18,0.24))
+points(x = ntree_arr[rfntreeCV_min_err], y = rfntreeCV_mean[rfntreeCV_min_err], col = "red", pch = 19)
+legend(x = 800, y = 0.24, legend = c("ntree CV error"), col = c("red"), lty = 1)
+```
+
+The CV error does not depend on `ntree`. In the above CV, we choose (`mtry`,`nodesize`,`ntree`) = (1,7,300), and report the misclassification error by Random Forest.
+
+```{r echo=FALSE, message=FALSE, fig.width = 8, fig.height = 3.5}
+# Put the best cost in the real testing error.
+trainrf_x <- data.matrix(movie_df_train[feature_x])[,]
+trainrf_y <- data.matrix(movie_df_train["vote_avg_gp"])[,]
+testrf_x <- data.matrix(movie_df_test[feature_x])[,]
+testrf_y <- data.matrix(movie_df_test["vote_avg_gp"])[,]
+
+rf_real.fit <- randomForest(trainrf_x, factor(trainrf_y), ntree = ntree_arr[rfntreeCV_min_err], importance = TRUE,
+                            nodesize = nodesize_arr[rfnodesizeCV_min_err], mtry = mtry_arr[rfmtryCV_min_err])
+rf_realfunc = predict(rf_real.fit, testrf_x)
+tab = table(rf_realfunc, testrf_y)
+rfrealpred_err <- 1-sum(diag(tab))/sum(tab)
+print(rfrealpred_err)
+```
+
+As can be seen, Random Forest again outperforms SVM in this dataset, both on CV error and test errors.  As random forest gives a better prediction than SVM, we calculate the variable importance from the Random Forest algorithm. The variable importance is based on the mean decrease in accuracy after removing the feature averaged over all trees.
+
+```{r echo=FALSE, message=FALSE, fig.width = 8, fig.height = 3.5}
+print(importance(rf_real.fit, type = 1))
+plot(importance(rf_real.fit, type = 1), ylab = "importance")
+```
+
+As can see in the above plot, `runtime` accounts for 17\% of the importance in the prediction, which is the most important features predicting the `vote_avg_gp`.  `month` accounts for less than 2.5\% of importance, that is not an important indicator whether the movie has a high vote or not.
+
+
+\subsection{Prediction on Star Wars}
+From `imdb.com`, the length of the movie Star Wars is 152 mins, released in December 15, 2017, so the `year` and `month` features would be 2017 and 1. `language_en` is 1 since the film was produced in English. The budget is 2.068 billion dollars, which is $\log_{10}(2.068\times10^9) = 9.31555$.
+```{r echo=FALSE, message=FALSE, fig.width = 8, fig.height = 3.5}
+starwar <- data.frame(matrix(c(152,9.31555,1,2017,1), nrow = 1, ncol = 5)) 
+colnames(starwar) <- c("runtime","log_budget","language_en","year","month")
+```
+We make a prediction on the `revenue` and `vote` of Star Wars.
+```{r echo=FALSE, message=FALSE, fig.width = 8, fig.height = 3.5}
+set.seed(1)
+train_x <- data.matrix(movie_df_train[feature_x])[,]
+train_yrev <- data.matrix(movie_df_train["log_revenue"])[,]
+train_yvote <- data.matrix(movie_df_train["vote_avg_gp"])[,]
+
+rf_realrev.fit <- randomForest(train_x, train_yrev, ntree = 200, nodesize = 5, mtry = 2)
+rf_realvote.fit = randomForest(train_x, factor(train_yvote), ntree = 300, nodesize = 7, mtry = 1)
+rf_realrevfunc = predict(rf_realrev.fit, starwar)
+rf_realvotefunc = predict(rf_realvote.fit, starwar) 
+print(c(rf_realrevfunc, rf_realvotefunc))
+```
+
+The predicted `revenue` is $10^{8.682557} = $ \$481 million, and it is predicted to have a high rating! 
